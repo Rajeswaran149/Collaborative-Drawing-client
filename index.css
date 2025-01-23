@@ -1,0 +1,21 @@
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+  }
+  #drawingCanvas {
+    border: 1px solid #000;
+    margin: 20px auto;
+    display: block;
+    border-radius: 10px;
+  }
+  .controls {
+    margin-bottom: 20px;
+  }
+  .controls input {
+    margin: 5px;
+  }
+  #userNotifications {
+    margin-top: 20px;
+    font-size: 1.2em;
+    color: #007bff;
+  }

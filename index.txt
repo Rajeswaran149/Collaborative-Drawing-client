@@ -1,0 +1,156 @@
+// const base_url = '//localhost:5000';
+// const base_url = 'https://collaborative-drawing-server.vercel.app';
+const base_url = '//collaborative-drawing-server.vercel.app';
+
+let socket = new WebSocket(`wss:${base_url}`); 
+// let socket = new WebSocket('wss://collaborative-drawing-server.vercel.app');
+      const canvas = document.getElementById("drawingCanvas");
+      const ctx = canvas.getContext("2d");
+      const colorPicker = document.getElementById("colorPicker");
+      const brushSizeSlider = document.getElementById("brushSize");
+      const userNotifications = document.getElementById("userNotifications");
+
+      let isDrawing = false;
+      let brushColor = localStorage.getItem("brushColor") || colorPicker.value;
+      let brushSize = localStorage.getItem("brushSize") || brushSizeSlider.value;
+      let username = "User" + Math.floor(Math.random() * 1000);  
+
+      // Set initial preferences from localStorage
+      colorPicker.value = brushColor;
+      brushSizeSlider.value = brushSize;
+
+      // Update preferences on change
+      colorPicker.addEventListener("input", (e) => {
+        brushColor = e.target.value;
+        localStorage.setItem("brushColor", brushColor);
+      });
+
+      brushSizeSlider.addEventListener("input", (e) => {
+        brushSize = e.target.value;
+        localStorage.setItem("brushSize", brushSize);
+      });
+
+      // Handle drawing on the canvas
+      canvas.addEventListener("mousedown", (e) => startDrawing(e));
+      canvas.addEventListener("mousemove", (e) => draw(e));
+      canvas.addEventListener("mouseup", () => stopDrawing());
+      canvas.addEventListener("mouseout", () => stopDrawing());
+
+      // Start drawing
+      function startDrawing(event) {
+        isDrawing = true;
+        draw(event);
+      }
+
+      // Stop drawing
+      function stopDrawing() {
+        isDrawing = false;
+        ctx.beginPath();
+      }
+
+      // Draw on the canvas and send the coordinates to the WebSocket server
+      function draw(event) {
+        if (!isDrawing) return;
+
+        const x = event.offsetX;
+        const y = event.offsetY;
+
+        // Draw on the canvas
+        ctx.lineWidth = brushSize;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = brushColor;
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+
+        // Check WebSocket state before sending data
+        if (socket.readyState === WebSocket.OPEN) {
+          // Send drawing data to the server
+          const data = JSON.stringify({
+            type: "draw",
+            x: x,
+            y: y,
+            brushColor: brushColor,
+            brushSize: brushSize,
+          });
+          socket.send(data);
+        }
+      }
+
+      // Reset the canvas
+      function resetCanvas() {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "reset_canvas" }));
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      // Handle incoming WebSocket messages
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          processMessage(message);
+        } catch (error) {
+          console.error("Error parsing message:", error);
+        }
+      };
+
+      function processMessage(message) {
+        switch (message.type) {
+          case "draw":
+            drawReceivedData(message);
+            break;
+          case "user_connected":
+            notifyUser(message.username + " has joined");
+            break;
+          case "user_disconnected":
+            notifyUser(message.username + " has left");
+            break;
+          case "reset_canvas":
+            resetCanvasReceived();
+            break;
+        }
+      }
+
+      // Handle drawing data received from another user
+      function drawReceivedData(data) {
+        ctx.lineWidth = data.brushSize;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = data.brushColor;
+        ctx.lineTo(data.x, data.y);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(data.x, data.y);
+      }
+
+      // Notify all users when a user joins or leaves
+      function notifyUser(message) {
+        const notification = document.createElement("div");
+        notification.textContent = message;
+        userNotifications.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
+      }
+
+      // Handle canvas reset received from server
+      function resetCanvasReceived() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
+      // Notify server when a new user connects
+      socket.onopen = () => {
+        socket.send(
+          JSON.stringify({
+            type: "user_connected",
+            username: username,
+          })
+        );
+      };
+
+      // Notify when a user disconnects
+      socket.onclose = () => {
+        userNotifications.innerHTML = '<div style="color: red;">Reconnecting...</div>';
+        setTimeout(() => {
+          socket = new WebSocket(`wss:${base_url}`);
+        }, 3000);
+      };
